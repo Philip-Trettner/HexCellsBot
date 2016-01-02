@@ -34,6 +34,7 @@ namespace HexCellsBot.Logic
         // can contain nulls
         public readonly Cell[] Neighbors = new Cell[6];
         public List<Cell> AllNeighbors = new List<Cell>();
+        public Model Model;
 
         public bool Solved = false;
 
@@ -48,8 +49,22 @@ namespace HexCellsBot.Logic
                     if (InnerText == "O")
                         InnerText = "0";
 
+                    var type = ConstraintType.Vanilla;
+                    var txt = InnerText;
+
+                    if (InnerText.StartsWith("{"))
+                    {
+                        type = ConstraintType.Connected;
+                        txt = InnerText.Trim('{', '}');
+                    }
+                    if (InnerText.StartsWith("-") || InnerText.StartsWith("."))
+                    {
+                        type = ConstraintType.NonConnected;
+                        txt = InnerText.Trim('-', '.');
+                    }
+
                     int cnt;
-                    if (!int.TryParse(InnerText, out cnt))
+                    if (!int.TryParse(txt, out cnt))
                     {
                         throw new InvalidOperationException("Invalid Number '" + InnerText + "'");
                     }
@@ -57,7 +72,7 @@ namespace HexCellsBot.Logic
                     switch (State)
                     {
                         case CellState.Black:
-                            return new NumberConstraint(cnt, Neighbors);
+                            return new NumberConstraint(cnt, Neighbors, type, ConnectionModel.FromCell(this));
                         default:
                             throw new NotImplementedException();
                     }

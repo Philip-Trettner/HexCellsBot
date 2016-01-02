@@ -126,8 +126,9 @@ namespace HexCellsBot
             UpdateModel();
         }
 
-        public void SolveSteps()
+        public bool SolveSteps()
         {
+            var shouldWait = false;
             RECT rc;
             GetWindowRect(Hwnd, out rc);
             var savPos = Cursor.Position;
@@ -143,12 +144,14 @@ namespace HexCellsBot
                         break;
 
                     case CellState.Black:
+                        shouldWait = true;
                         DoRightMouseClick();
                         break;
                 }
             }
 
             Cursor.Position = savPos;
+            return shouldWait;
         }
 
         private void applyStepsToolStripMenuItem_Click(object sender, EventArgs e)
@@ -168,11 +171,25 @@ namespace HexCellsBot
 
             while (lbSolver.Items.Count > 0)
             {
-                SolveSteps();
+                if (SolveSteps())
+                    Thread.Sleep(500);
+                else Thread.Sleep(200);
 
-                Thread.Sleep(3000);
                 UpdateModel();
             }
+        }
+
+        private void applyAndRecaptureToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            if (Hwnd == IntPtr.Zero)
+                return;
+            BringWindowToTop(Hwnd);
+
+            if (SolveSteps())
+                Thread.Sleep(500);
+            else Thread.Sleep(200);
+
+            UpdateModel();
         }
     }
 }

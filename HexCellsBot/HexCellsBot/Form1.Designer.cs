@@ -44,6 +44,7 @@
             this.lbSolver = new System.Windows.Forms.ListBox();
             this.applyStepsToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.solveContinuouslyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.applyAndRecaptureToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.tabControl1.SuspendLayout();
             this.tpModel.SuspendLayout();
             this.tpRules.SuspendLayout();
@@ -163,7 +164,8 @@
             this.msMain.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.captureToolStripMenuItem,
             this.applyStepsToolStripMenuItem,
-            this.solveContinuouslyToolStripMenuItem});
+            this.solveContinuouslyToolStripMenuItem,
+            this.applyAndRecaptureToolStripMenuItem});
             this.msMain.Location = new System.Drawing.Point(0, 0);
             this.msMain.Name = "msMain";
             this.msMain.Size = new System.Drawing.Size(1422, 24);
@@ -199,6 +201,13 @@
             this.solveContinuouslyToolStripMenuItem.Size = new System.Drawing.Size(121, 20);
             this.solveContinuouslyToolStripMenuItem.Text = "Solve Continuously";
             this.solveContinuouslyToolStripMenuItem.Click += new System.EventHandler(this.solveContinuouslyToolStripMenuItem_Click);
+            // 
+            // applyAndRecaptureToolStripMenuItem
+            // 
+            this.applyAndRecaptureToolStripMenuItem.Name = "applyAndRecaptureToolStripMenuItem";
+            this.applyAndRecaptureToolStripMenuItem.Size = new System.Drawing.Size(129, 20);
+            this.applyAndRecaptureToolStripMenuItem.Text = "Apply and Recapture";
+            this.applyAndRecaptureToolStripMenuItem.Click += new System.EventHandler(this.applyAndRecaptureToolStripMenuItem_Click);
             // 
             // Form1
             // 
@@ -243,6 +252,7 @@
         private System.Windows.Forms.ListBox lbSolver;
         private System.Windows.Forms.ToolStripMenuItem applyStepsToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem solveContinuouslyToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem applyAndRecaptureToolStripMenuItem;
     }
 }
 

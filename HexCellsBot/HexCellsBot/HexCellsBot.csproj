@@ -87,6 +87,7 @@
       <DependentUpon>Form1.cs</DependentUpon>
     </Compile>
     <Compile Include="Logic\Cell.cs" />
+    <Compile Include="Logic\ConnectionModel.cs" />
     <Compile Include="Logic\Model.cs" />
     <Compile Include="Logic\NumberConstraint.cs" />
     <Compile Include="Logic\SolveStep.cs" />
