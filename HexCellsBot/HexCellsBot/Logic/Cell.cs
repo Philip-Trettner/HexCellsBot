@@ -44,23 +44,28 @@ namespace HexCellsBot.Logic
         {
             get
             {
-                if (!string.IsNullOrEmpty(InnerText) && InnerText != "?")
+                // FUCK OCR
+                if (InnerText == "7" && State == CellState.Black)
+                    InnerText = "?";
+
+                if (!string.IsNullOrEmpty(InnerText) && InnerText != "?" && InnerText != "’?")
                 {
                     if (InnerText == "O")
                         InnerText = "0";
 
-                    var type = ConstraintType.Vanilla;
+                    var type = ConstraintType.Equal;
                     var txt = InnerText;
 
-                    if (InnerText.StartsWith("{"))
+                    if (InnerText.StartsWith("{") || InnerText.EndsWith("}"))
                     {
                         type = ConstraintType.Connected;
                         txt = InnerText.Trim('{', '}');
                     }
-                    if (InnerText.StartsWith("-") || InnerText.StartsWith("."))
+                    if (InnerText.StartsWith("-") || InnerText.StartsWith(".") || InnerText.StartsWith("_") ||
+                        InnerText.EndsWith("-") || InnerText.EndsWith(".") || InnerText.EndsWith("_"))
                     {
                         type = ConstraintType.NonConnected;
-                        txt = InnerText.Trim('-', '.');
+                        txt = InnerText.Trim('-', '.', '_');
                     }
 
                     int cnt;
@@ -72,7 +77,9 @@ namespace HexCellsBot.Logic
                     switch (State)
                     {
                         case CellState.Black:
-                            return new NumberConstraint(cnt, Neighbors, type, ConnectionModel.FromCell(this));
+                            if (cnt > 6)
+                                throw new ArgumentOutOfRangeException("cnt");
+                            return new NumberConstraint(cnt, Neighbors, type, ConnectionModel.FromCell(this)) {ExtraInfo = "From " + this};
                         default:
                             throw new NotImplementedException();
                     }

@@ -108,12 +108,13 @@ namespace HexCellsBot
 
         private void tTick_Tick(object sender, EventArgs e)
         {
+            tTick.Enabled = false;
             UpdateModel();
         }
 
         private void Form1_Load(object sender, EventArgs e)
         {
-            UpdateModel();
+          //  UpdateModel();
         }
 
         private void cbBG_CheckedChanged(object sender, EventArgs e)
@@ -176,6 +177,7 @@ namespace HexCellsBot
                 else Thread.Sleep(200);
 
                 UpdateModel();
+                Application.DoEvents();
             }
         }
 
@@ -186,7 +188,7 @@ namespace HexCellsBot
             BringWindowToTop(Hwnd);
 
             if (SolveSteps())
-                Thread.Sleep(500);
+                Thread.Sleep(1500);
             else Thread.Sleep(200);
 
             UpdateModel();

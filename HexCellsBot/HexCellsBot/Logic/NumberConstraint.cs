@@ -9,9 +9,11 @@ namespace HexCellsBot.Logic
 {
     public enum ConstraintType
     {
-        Vanilla,
+        Equal,
         Connected,
-        NonConnected
+        NonConnected,
+        Minimum,
+        Maximum
     }
 
     public class NumberConstraint
@@ -29,16 +31,83 @@ namespace HexCellsBot.Logic
 
         public string IDString => $"Rule #{ID}";
 
+        public bool HasEqualSemantics
+        {
+            get
+            {
+                switch (Type)
+                {
+                    case ConstraintType.Equal:
+                    case ConstraintType.Connected:
+                    case ConstraintType.NonConnected:
+                        return true;
+                    case ConstraintType.Minimum:
+                    case ConstraintType.Maximum:
+                        return false;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+            }
+        }
+        public bool HasGreaterOrEqualSemantics
+        {
+            get
+            {
+                switch (Type)
+                {
+                    case ConstraintType.Equal:
+                    case ConstraintType.Connected:
+                    case ConstraintType.NonConnected:
+                    case ConstraintType.Minimum:
+                        return true;
+                    case ConstraintType.Maximum:
+                        return false;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+            }
+        }
+        public bool HasLesserOrEqualSemantics
+        {
+            get
+            {
+                switch (Type)
+                {
+                    case ConstraintType.Equal:
+                    case ConstraintType.Connected:
+                    case ConstraintType.NonConnected:
+                    case ConstraintType.Maximum:
+                        return true;
+                    case ConstraintType.Minimum:
+                        return false;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+            }
+        }
+
         // rule without blacks or blues
         public NumberConstraint PureRule
         {
             get
             {
-                if (Type != ConstraintType.Vanilla)
+                if (Type != ConstraintType.Equal)
                     return null; // only works for vanilla
 
                 var bc = Cells.Count(c => c.State == CellState.Blue);
-                return new NumberConstraint(Count - bc, Cells.Where(c => c.State == CellState.Yellow), ConstraintType.Vanilla, null) { ExtraInfo = "Pure of " + IDString };
+                return new NumberConstraint(Count - bc, Cells.Where(c => c.State == CellState.Yellow), ConstraintType.Equal, null) { ExtraInfo = "Pure of " + IDString };
+            }
+        }
+
+        // rule without blacks
+        public NumberConstraint PositiveRule
+        {
+            get
+            {
+                // works for every type
+                //f (Type != ConstraintType.Vanilla)
+
+                return new NumberConstraint(Count, Cells.Where(c => c.State != CellState.Black), Type, ConnectionModel) { ExtraInfo = "Positive of " + IDString };
             }
         }
 
@@ -56,6 +125,9 @@ namespace HexCellsBot.Logic
         // Cells can contain null
         public NumberConstraint(int cnt, IEnumerable<Cell> cells, ConstraintType type, ConnectionModel connectionModel)
         {
+            if (cnt < 0)
+                throw new ArgumentOutOfRangeException("cnt");
+
             ConnectionModel = connectionModel;
             Type = type;
             Count = cnt;
@@ -70,10 +142,13 @@ namespace HexCellsBot.Logic
             if (!string.IsNullOrEmpty(ExtraInfo))
                 s += " " + ExtraInfo + ",";
             s += " Exactly " + Count;
-            if (Type != ConstraintType.Vanilla)
+            if (Type != ConstraintType.Equal)
                 s += " " + Type;
             s += " Cells of {";
-            s += Cells.Select(c => c.ToString()).Aggregate((s1, s2) => s1 + ", " + s2);
+            if (Cells.Count > 6)
+                s += "... " + Cells.Count + " cells ...";
+            else
+                s += Cells.Select(c => c.ToString()).Aggregate((s1, s2) => s1 + ", " + s2);
             s += "}";
             return s;
         }
@@ -111,13 +186,13 @@ namespace HexCellsBot.Logic
         // does not work with non.vanilla
         public NumberConstraint Without(NumberConstraint nc)
         {
-            Debug.Assert(Type == ConstraintType.Vanilla);
-            Debug.Assert(nc.Type == ConstraintType.Vanilla);
+            Debug.Assert(Type == ConstraintType.Equal);
+            Debug.Assert(nc.Type == ConstraintType.Equal);
             Debug.Assert(nc.IsStrictSubsetOf(this));
 
             var newCells = Cells.Where(c => !nc.Cells.Contains(c));
             var newCnt = Count - nc.Count;
-            return new NumberConstraint(newCnt, newCells, ConstraintType.Vanilla, null) { ExtraInfo = IDString + " without " + nc.IDString };
+            return new NumberConstraint(newCnt, newCells, ConstraintType.Equal, null) { ExtraInfo = IDString + " without " + nc.IDString };
         }
 
         public bool HasCutWith(NumberConstraint nc2)
@@ -133,30 +208,39 @@ namespace HexCellsBot.Logic
             var bothCells = Cells.Where(c => nc.Cells.Contains(c)).ToArray();
 
             // blues from RHS leak into this
-            if (nc.Count > nc2only.Length)
-            {
+            if (HasLesserOrEqualSemantics && nc.HasGreaterOrEqualSemantics)
                 if (nc.Count - nc2only.Length >= Count)
                 {
                     if (nc.Count - nc2only.Length > Count)
                         throw new InvalidOperationException("Hm, something is fishey");
 
-                    return new NumberConstraint(0, nc1only, ConstraintType.Vanilla, null) { ExtraInfo = $"{nc.IDString} forces these cells to be empty" };
+                    return new NumberConstraint(0, nc1only, ConstraintType.Equal, null) { ExtraInfo = $"{IDString} and {nc.IDString} force these cells to be empty" };
                 }
-            }
 
             // blues from this leak into rhs
-            if (Count > nc1only.Length)
-            {
+            if (HasGreaterOrEqualSemantics && nc.HasLesserOrEqualSemantics)
                 if (nc.Count <= Count - nc1only.Length)
                 {
                     if (nc.Count < Count - nc1only.Length)
                         throw new InvalidOperationException("Hm, something is fishey");
 
-                    return new NumberConstraint(nc1only.Length, nc1only, ConstraintType.Vanilla, null) { ExtraInfo = $"{nc.IDString} forces these cells to be all-blue" };
+                    return new NumberConstraint(nc1only.Length, nc1only, ConstraintType.Equal, null) { ExtraInfo = $"{IDString} and {nc.IDString} force these cells to be all-blue" };
                 }
-            }
 
             return null;
+        }
+
+        public IEnumerable<NumberConstraint> DerivativeRules
+        {
+            get
+            {
+                // special -2- case for 4 connected cells
+                if (Type == ConstraintType.NonConnected && Count == 2)
+                {
+                    foreach (var nc in ConnectionModel.SpecialNonConnected2Derivatives)
+                        yield return nc;
+                }
+            }
         }
     }
 }

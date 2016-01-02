@@ -124,7 +124,7 @@
             // 
             // tTick
             // 
-            this.tTick.Interval = 1000;
+            this.tTick.Enabled = true;
             this.tTick.Tick += new System.EventHandler(this.tTick_Tick);
             // 
             // tpCapture

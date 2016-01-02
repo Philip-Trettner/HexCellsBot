@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -11,12 +12,92 @@ namespace HexCellsBot.Logic
         public bool RingBuffer = true;
         public Cell[] Cells;
 
+        public IEnumerable<NumberConstraint> SpecialNonConnected2Derivatives
+        {
+            get
+            {
+                if (Cells.Length < 4)
+                    yield break;
+                if (Cells.Count(c => (c?.State ?? CellState.Black) != CellState.Black) > 4)
+                    yield break; // only works for EXACLTY 4
+
+                var states = Cells.Select(c => c?.State ?? CellState.Black).ToArray();
+
+                const int ncCount = 4;
+                var endIdx = RingBuffer ? Cells.Length : Cells.Length - ncCount + 1;
+                var okCnt = 0;
+                var okStart = 0;
+                for (var start = 0; start < endIdx; ++start)
+                {
+                    var ok = true;
+                    for (var i = start; i < start + ncCount; ++i)
+                        if (states[i % Cells.Length] != CellState.Yellow)
+                        {
+                            ok = false;
+                            break;
+                        }
+
+                    if (RingBuffer)
+                    {
+                        if (states[(start - 1 + Cells.Length) % Cells.Length] != CellState.Black)
+                            ok = false;
+                        if (states[(start + ncCount + Cells.Length) % Cells.Length] != CellState.Black)
+                            ok = false;
+                    }
+                    else
+                    {
+                        if (start > 0 && states[start - 1] != CellState.Black)
+                            ok = false;
+                        if (start + ncCount < Cells.Length && states[start + ncCount] != CellState.Black)
+                            ok = false;
+                    }
+
+                    if (ok)
+                    {
+                        ++okCnt;
+                        okStart = start;
+                    }
+                }
+
+                if (okCnt == 1)
+                {
+                    yield return new NumberConstraint(1, new[] { Cells[okStart + 0], Cells[okStart + 1] }, ConstraintType.Equal, null)
+                    {
+                        ExtraInfo = "Special 2-non-connected-on-4-consecutive p1"
+                    };
+                    yield return new NumberConstraint(1, new[] { Cells[okStart + 2], Cells[okStart + 3] }, ConstraintType.Equal, null)
+                    {
+                        ExtraInfo = "Special 2-non-connected-on-4-consecutive p2"
+                    };
+                    yield return new NumberConstraint(1, new[] { Cells[okStart + 1], Cells[okStart + 2] }, ConstraintType.Maximum, null)
+                    {
+                        ExtraInfo = "Special 2-non-connected-on-4-consecutive p3"
+                    };
+                    yield return new NumberConstraint(1, new[] { Cells[okStart + 0], Cells[okStart + 3] }, ConstraintType.Minimum, null)
+                    {
+                        ExtraInfo = "Special 2-non-connected-on-4-consecutive p4"
+                    };
+                }
+            }
+        }
+
+
         public static ConnectionModel FromCell(Cell c)
         {
             var m = new ConnectionModel
             {
                 Cells = c.Neighbors,
                 RingBuffer = true
+            };
+            return m;
+        }
+
+        public static ConnectionModel FromColumn(ColumnConstraint columnConstraint)
+        {
+            var m = new ConnectionModel
+            {
+                Cells = columnConstraint.Cells.ToArray(),
+                RingBuffer = false
             };
             return m;
         }
@@ -29,7 +110,7 @@ namespace HexCellsBot.Logic
                 var any = states.Select(s => false).ToArray();
                 var all = states.Select(s => true).ToArray();
 
-                var endIdx = RingBuffer ? Cells.Length : Cells.Length - nc.Count;
+                var endIdx = RingBuffer ? Cells.Length : Cells.Length - nc.Count + 1;
                 for (var start = 0; start < endIdx; ++start)
                 {
                     var ok = true;
@@ -68,8 +149,9 @@ namespace HexCellsBot.Logic
             }
             else if (nc.Type == ConstraintType.NonConnected)
             {
+                // TODO: This stuff is wrong for n>2, because YBYBY may work
                 var states = Cells.Select(c => c?.State ?? CellState.Black).ToArray();
-                var endIdx = RingBuffer ? Cells.Length : Cells.Length - nc.Count;
+                var endIdx = RingBuffer ? Cells.Length : Cells.Length - nc.Count + 2;
 
                 var any = states.Select(s => false).ToArray();
                 var all = states.Select(s => true).ToArray();
@@ -84,10 +166,21 @@ namespace HexCellsBot.Logic
                             ok = false;
                             break;
                         }
-                    if (states[(start - 1 + Cells.Length) % Cells.Length] == CellState.Blue)
-                        ok = false;
-                    if (states[(start + nc.Count - 1) % Cells.Length] == CellState.Blue)
-                        ok = false;
+
+                    if (RingBuffer)
+                    {
+                        if (states[(start - 1 + Cells.Length) % Cells.Length] == CellState.Blue)
+                            ok = false;
+                        if (states[(start + nc.Count - 1) % Cells.Length] == CellState.Blue)
+                            ok = false;
+                    }
+                    else
+                    {
+                        if (start > 0 && states[start - 1] == CellState.Blue)
+                            ok = false;
+                        if (start + nc.Count - 1 < Cells.Length && states[start + nc.Count - 1] == CellState.Blue)
+                            ok = false;
+                    }
 
                     if (ok)
                     {
@@ -112,20 +205,40 @@ namespace HexCellsBot.Logic
                         // non-fixed blue
                         if (ok && bc == 0)
                         {
-                            for (var i = start; i < start + nc.Count - 1; ++i)
-                                any[i % Cells.Length] = true;
-
-                            for (var j = start + nc.Count; j < start + Cells.Length - 1; ++j)
+                            var endJIdx = RingBuffer ? start + Cells.Length - 1 : Cells.Length;
+                            for (var j = start + nc.Count; j < endJIdx; ++j)
                                 if (states[j % Cells.Length] == CellState.Yellow)
+                                {
+                                    for (var i = start; i < start + nc.Count - 1; ++i)
+                                        any[i % Cells.Length] = true;
+
                                     for (var i = start + nc.Count - 1; i < start + Cells.Length; ++i)
-                                        if (i == j)
+                                        if (i % Cells.Length == j % Cells.Length)
                                             any[i % Cells.Length] = true;
                                         else
                                             all[i % Cells.Length] = false;
+                                }
+
+                            if (!RingBuffer)
+                            {
+                                for (var j = 0; j < start - 1; ++j)
+                                    if (states[j % Cells.Length] == CellState.Yellow)
+                                    {
+                                        for (var i = start; i < start + nc.Count - 1; ++i)
+                                            any[i % Cells.Length] = true;
+
+                                        for (var i = start + nc.Count - 1; i < start + Cells.Length; ++i)
+                                            if (i % Cells.Length == j % Cells.Length)
+                                                any[i % Cells.Length] = true;
+                                            else
+                                                all[i % Cells.Length] = false;
+                                    }
+                            }
                         }
                     }
                 }
 
+                //Debugger.Break();
                 for (var i = 0; i < Cells.Length; ++i)
                     if (Cells[i]?.State == CellState.Yellow && Cells[i].MaySolve)
                     {
