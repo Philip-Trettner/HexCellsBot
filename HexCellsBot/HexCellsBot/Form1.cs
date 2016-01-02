@@ -127,31 +127,37 @@ namespace HexCellsBot
             UpdateModel();
         }
 
-        public bool SolveSteps()
+        public bool SolveStep(SolveStep step)
         {
             var shouldWait = false;
+            var savPos = Cursor.Position;
             RECT rc;
             GetWindowRect(Hwnd, out rc);
-            var savPos = Cursor.Position;
-
-            foreach (SolveStep step in lbSolver.Items)
+            Thread.Sleep(100);
+            Cursor.Position = new Point(rc.Left + step.Cell.Center.x, rc.Top + step.Cell.Center.y);
+            switch (step.NewState)
             {
-                Thread.Sleep(100);
-                Cursor.Position = new Point(rc.Left + step.Cell.Center.x, rc.Top + step.Cell.Center.y);
-                switch (step.NewState)
-                {
-                    case CellState.Blue:
-                        DoLeftMouseClick();
-                        break;
+                case CellState.Blue:
+                    DoLeftMouseClick();
+                    break;
 
-                    case CellState.Black:
-                        shouldWait = true;
-                        DoRightMouseClick();
-                        break;
-                }
+                case CellState.Black:
+                    shouldWait = true;
+                    DoRightMouseClick();
+                    break;
             }
 
             Cursor.Position = savPos;
+            return shouldWait;
+        }
+
+        public bool SolveSteps()
+        {
+            var shouldWait = false;
+
+            foreach (SolveStep step in lbSolver.Items)
+                shouldWait |= SolveStep(step);
+
             return shouldWait;
         }
 
@@ -178,6 +184,7 @@ namespace HexCellsBot
 
                 UpdateModel();
                 Application.DoEvents();
+                
             }
         }
 
@@ -192,6 +199,22 @@ namespace HexCellsBot
             else Thread.Sleep(200);
 
             UpdateModel();
+        }
+
+        private void applyOneStepToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            if (Hwnd == IntPtr.Zero)
+                return;
+            BringWindowToTop(Hwnd);
+
+            //SolveStep(1);
+
+            if (lbSolver.Items.Count > 0)
+            {
+                var step = lbSolver.Items[0] as SolveStep;
+                SolveStep(step);
+                lbSolver.Items.RemoveAt(0);
+            }
         }
     }
 }

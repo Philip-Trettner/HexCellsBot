@@ -187,7 +187,7 @@ namespace HexCellsBot.Logic
         public NumberConstraint Without(NumberConstraint nc)
         {
             Debug.Assert(Type == ConstraintType.Equal);
-            Debug.Assert(nc.Type == ConstraintType.Equal);
+            Debug.Assert(nc.HasEqualSemantics);
             Debug.Assert(nc.IsStrictSubsetOf(this));
 
             var newCells = Cells.Where(c => !nc.Cells.Contains(c));
@@ -240,6 +240,10 @@ namespace HexCellsBot.Logic
                     foreach (var nc in ConnectionModel.SpecialNonConnected2Derivatives)
                         yield return nc;
                 }
+
+                if (Type == ConstraintType.NonConnected)
+                    foreach (var nc in ConnectionModel.NonConnectedMaximumDerivatives(this))
+                        yield return nc;
             }
         }
     }

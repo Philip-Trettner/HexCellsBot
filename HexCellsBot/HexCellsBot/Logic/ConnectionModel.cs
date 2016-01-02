@@ -12,6 +12,19 @@ namespace HexCellsBot.Logic
         public bool RingBuffer = true;
         public Cell[] Cells;
 
+        public IEnumerable<NumberConstraint> NonConnectedMaximumDerivatives(NumberConstraint nc)
+        {
+            var endIdx = RingBuffer ? Cells.Length : Cells.Length - nc.Count + 1;
+            for (var start = 0; start < endIdx; ++start)
+            {
+                var cells = new Cell[nc.Count];
+                for (var i = start; i < start + nc.Count; ++i)
+                    cells[i - start] = Cells[i % Cells.Length];
+                if (cells.All(c => c != null) && cells.Any(c => c.State == CellState.Yellow))
+                    yield return new NumberConstraint(nc.Count - 1, cells, ConstraintType.Maximum, null);
+            }
+        }
+
         public IEnumerable<NumberConstraint> SpecialNonConnected2Derivatives
         {
             get
@@ -61,19 +74,15 @@ namespace HexCellsBot.Logic
 
                 if (okCnt == 1)
                 {
-                    yield return new NumberConstraint(1, new[] { Cells[okStart + 0], Cells[okStart + 1] }, ConstraintType.Equal, null)
+                    yield return new NumberConstraint(1, new[] { Cells[(okStart + 0) % Cells.Length], Cells[(okStart + 1) % Cells.Length] }, ConstraintType.Equal, null)
                     {
                         ExtraInfo = "Special 2-non-connected-on-4-consecutive p1"
                     };
-                    yield return new NumberConstraint(1, new[] { Cells[okStart + 2], Cells[okStart + 3] }, ConstraintType.Equal, null)
+                    yield return new NumberConstraint(1, new[] { Cells[(okStart + 2) % Cells.Length], Cells[(okStart + 3) % Cells.Length] }, ConstraintType.Equal, null)
                     {
                         ExtraInfo = "Special 2-non-connected-on-4-consecutive p2"
                     };
-                    yield return new NumberConstraint(1, new[] { Cells[okStart + 1], Cells[okStart + 2] }, ConstraintType.Maximum, null)
-                    {
-                        ExtraInfo = "Special 2-non-connected-on-4-consecutive p3"
-                    };
-                    yield return new NumberConstraint(1, new[] { Cells[okStart + 0], Cells[okStart + 3] }, ConstraintType.Minimum, null)
+                    yield return new NumberConstraint(1, new[] { Cells[(okStart + 0) % Cells.Length], Cells[(okStart + 3) % Cells.Length] }, ConstraintType.Minimum, null)
                     {
                         ExtraInfo = "Special 2-non-connected-on-4-consecutive p4"
                     };
@@ -156,7 +165,9 @@ namespace HexCellsBot.Logic
                 var any = states.Select(s => false).ToArray();
                 var all = states.Select(s => true).ToArray();
 
-                for (var start = 0; start < endIdx; ++start)
+                CheckNonConn(states, any, all, 0, 0, nc);
+
+                /*for (var start = 0; start < endIdx; ++start)
                 {
                     var ok = true;
                     // n-1 blues
@@ -236,7 +247,7 @@ namespace HexCellsBot.Logic
                             }
                         }
                     }
-                }
+                }*/
 
                 //Debugger.Break();
                 for (var i = 0; i < Cells.Length; ++i)
@@ -294,6 +305,68 @@ namespace HexCellsBot.Logic
                 }*/
             }
             else throw new NotImplementedException();
+        }
+
+        private void CheckNonConn(CellState[] states, bool[] any, bool[] all, int bc, int i, NumberConstraint nc)
+        {
+            if (i == states.Length)
+            {
+                // Check solution
+                bool ok = states.Count(s => s == CellState.Blue) == nc.Count;
+                if (ok)
+                {
+                    int fi = states.FirstIndexOf(CellState.Blue);
+                    int li = states.LastIndexOf(CellState.Blue);
+
+                    if (RingBuffer)
+                    {
+                        int cnt = -1;
+                        int j = fi;
+                        while (states[j] == CellState.Blue)
+                        {
+                            j = (j - 1 + states.Length) % states.Length;
+                            ++cnt;
+                        }
+                        j = fi;
+                        while (states[j] == CellState.Blue)
+                        {
+                            j = (j + 1) % states.Length;
+                            ++cnt;
+                        }
+
+                        ok = cnt < nc.Count;
+                    }
+                    else
+                    {
+                        ok = li - fi >= nc.Count;
+                    }
+
+                    if (ok)
+                    {
+                        for (var j = 0; j < states.Length; ++j)
+                            if (states[j] == CellState.Blue)
+                                any[j] = true;
+                            else all[j] = false;
+                    }
+                }
+            }
+            else
+            {
+                if (states[i] == CellState.Yellow)
+                {
+                    if (bc < nc.Count)
+                    {
+                        states[i] = CellState.Blue;
+                        CheckNonConn(states, any, all, bc + 1, i + 1, nc);
+                    }
+
+                    states[i] = CellState.Black;
+                    CheckNonConn(states, any, all, bc + 0, i + 1, nc);
+
+                    states[i] = CellState.Yellow;
+                }
+                else CheckNonConn(states, any, all, bc + (states[i] == CellState.Blue ? 1 : 0), i + 1, nc);
+            }
         }
     }
 }

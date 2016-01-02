@@ -51,7 +51,7 @@ namespace HexCellsBot.Logic
 
             Tengine.SetVariable("classify_enable_learning", false);
             Tengine.SetVariable("classify_enable_adaptive_matcher", false);
-            Tengine.SetVariable("tessedit_char_whitelist", "1234567890-{}?._");
+            Tengine.SetVariable("tessedit_char_whitelist", "1234567890-{}?_");
 
             // remaining rect
             var bx = 0;
@@ -183,7 +183,7 @@ namespace HexCellsBot.Logic
                     // TODO: check with special types
 
                     // check if nc1 is subset of nc2
-                    if (nc1.Type == ConstraintType.Equal && nc2.Type == ConstraintType.Equal)
+                    if (nc1.HasEqualSemantics && nc2.Type == ConstraintType.Equal)
                         if (nc1.IsStrictSubsetOf(nc2))
                             changed |= AddRuleChecked(nc2.Without(nc1));
 
