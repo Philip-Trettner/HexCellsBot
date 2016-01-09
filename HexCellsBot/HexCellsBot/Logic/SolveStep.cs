@@ -20,6 +20,7 @@ namespace HexCellsBot.Logic
                 throw new InvalidOperationException("Only allowed for yellow");
 
             cell.Solved = true;
+            cell.SolvedState = newState;
 
             NewState = newState;
             if (newState == CellState.Yellow)

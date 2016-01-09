@@ -8,6 +8,21 @@ using GlmSharp;
 
 namespace HexCellsBot.Logic
 {
+    public class ColumnConstraintTestStub
+    {
+        public int X, Y;
+        public string Text;
+        public int Angle;
+
+        public ColumnConstraintTestStub(int x, int y, string txt, int angle)
+        {
+            X = x;
+            Y = y;
+            Text = txt;
+            Angle = angle;
+        }
+    }
+
     public class ColumnConstraint
     {
         public readonly Cell Seed;

@@ -9,6 +9,8 @@ namespace HexCellsBot.Logic
 {
     public class ConnectionModel
     {
+        private const bool Debug = false;
+
         public bool RingBuffer = true;
         public Cell[] Cells;
 
@@ -148,11 +150,11 @@ namespace HexCellsBot.Logic
                 }
 
                 for (var i = 0; i < Cells.Length; ++i)
-                    if (Cells[i]?.State == CellState.Yellow && Cells[i].MaySolve)
+                    if (Cells[i]?.State == CellState.Yellow)
                     {
-                        if (all[i])
+                        if (all[i] && Cells[i].MaySolve(CellState.Blue))
                             yield return new SolveStep(Cells[i], CellState.Blue, "All conceivable connected solutions of " + nc.IDString + " contain this cell");
-                        if (!any[i])
+                        if (!any[i] && Cells[i].MaySolve(CellState.Black))
                             yield return new SolveStep(Cells[i], CellState.Black, "All conceivable connected solutions of " + nc.IDString + " do NOT contain this cell");
                     }
             }
@@ -165,7 +167,25 @@ namespace HexCellsBot.Logic
                 var any = states.Select(s => false).ToArray();
                 var all = states.Select(s => true).ToArray();
 
+                if (Debug)
+                {
+                    Console.WriteLine("---");
+                    Console.WriteLine(states.Select(s => s == CellState.Blue ? "X" : s == CellState.Yellow ? "?" : "_").Aggregate((s1, s2) => s1 + " " + s2));
+                }
+
                 CheckNonConn(states, any, all, 0, 0, nc);
+
+                if (any.All(a => !a))
+                    throw new InvalidOperationException("No valid solution found...");
+
+                if (Debug)
+                {
+                    Console.WriteLine("any");
+                    Console.WriteLine(any.Select(s => s ? "X" : "_").Aggregate((s1, s2) => s1 + " " + s2));
+                    Console.WriteLine("all");
+                    Console.WriteLine(all.Select(s => s ? "X" : "_").Aggregate((s1, s2) => s1 + " " + s2));
+                    Console.WriteLine();
+                }
 
                 /*for (var start = 0; start < endIdx; ++start)
                 {
@@ -251,11 +271,11 @@ namespace HexCellsBot.Logic
 
                 //Debugger.Break();
                 for (var i = 0; i < Cells.Length; ++i)
-                    if (Cells[i]?.State == CellState.Yellow && Cells[i].MaySolve)
+                    if (Cells[i]?.State == CellState.Yellow)
                     {
-                        if (all[i])
+                        if (all[i] && Cells[i].MaySolve(CellState.Blue))
                             yield return new SolveStep(Cells[i], CellState.Blue, "All conceivable non-connected solutions of " + nc.IDString + " contain this cell");
-                        if (!any[i])
+                        if (!any[i] && Cells[i].MaySolve(CellState.Black))
                             yield return new SolveStep(Cells[i], CellState.Black, "All conceivable non-connected solutions of " + nc.IDString + " do NOT contain this cell");
                     }
 
@@ -312,7 +332,7 @@ namespace HexCellsBot.Logic
             if (i == states.Length)
             {
                 // Check solution
-                bool ok = states.Count(s => s == CellState.Blue) == nc.Count;
+                var ok = states.Count(s => s == CellState.Blue) == nc.Count;
                 if (ok)
                 {
                     int fi = states.FirstIndexOf(CellState.Blue);
@@ -343,6 +363,8 @@ namespace HexCellsBot.Logic
 
                     if (ok)
                     {
+                        if (Debug)
+                            Console.WriteLine(states.Select(s => s == CellState.Blue ? "X" : "_").Aggregate((s1, s2) => s1 + " " + s2));
                         for (var j = 0; j < states.Length; ++j)
                             if (states[j] == CellState.Blue)
                                 any[j] = true;

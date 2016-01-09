@@ -87,23 +87,43 @@ namespace HexCellsBot
             Text = $"HexCells Bot [CONNECTED {Hwnd}]";
 
             // update bg image
+            var now = DateTime.Now;
             var bmp = PrintWindow(Hwnd);
             pbCapture.Image?.Dispose();
             pbCapture.Image = bmp;
             pbModel.BackgroundImage = cbBG.Checked ? bmp : null;
 
+
             // create model
             var m = Model.Analyze(bmp);
+            lStatusTiming.Text = (int)(DateTime.Now - now).TotalMilliseconds + " ms for last model update";
             pbModel.Image?.Dispose();
             pbModel.Image = m.Print(bmp.Width, bmp.Height);
 
             // rules
-            lbRules.Items.Clear();
-            lbRules.Items.AddRange(m.NumberConstraints.Cast<object>().ToArray());
+            lvRules.Items.Clear();
+            foreach (var nc in m.NumberConstraints)
+            {
+                var item = new ListViewItem(nc.ID.ToString());
+                item.SubItems.Add(nc.Generation.ToString());
+                item.SubItems.Add(nc.ConstraintString);
+                item.SubItems.Add(nc.Cells.Count.ToString());
+                item.SubItems.Add(nc.CellCompleteString);
+                item.SubItems.Add(nc.ExtraInfo);
+                item.Tag = nc;
+                lvRules.Items.Add(item);
+            }
 
             // solving
-            lbSolver.Items.Clear();
-            lbSolver.Items.AddRange(m.Steps.Cast<object>().ToArray());
+            lvSteps.Items.Clear();
+            foreach (var s in m.Steps)
+            {
+                var item = new ListViewItem(s.Cell.ToString());
+                item.SubItems.Add(s.NewState.ToString());
+                item.SubItems.Add(s.Explanation);
+                item.Tag = s;
+                lvSteps.Items.Add(item);
+            }
         }
 
         private void tTick_Tick(object sender, EventArgs e)
@@ -114,7 +134,9 @@ namespace HexCellsBot
 
         private void Form1_Load(object sender, EventArgs e)
         {
-          //  UpdateModel();
+            //  UpdateModel();
+
+            tcTabs.SelectedTab = tpModel;
         }
 
         private void cbBG_CheckedChanged(object sender, EventArgs e)
@@ -155,8 +177,8 @@ namespace HexCellsBot
         {
             var shouldWait = false;
 
-            foreach (SolveStep step in lbSolver.Items)
-                shouldWait |= SolveStep(step);
+            foreach (ListViewItem item in lvSteps.Items)
+                shouldWait |= SolveStep(item.Tag as SolveStep);
 
             return shouldWait;
         }
@@ -176,7 +198,7 @@ namespace HexCellsBot
                 return;
             BringWindowToTop(Hwnd);
 
-            while (lbSolver.Items.Count > 0)
+            while (lvSteps.Items.Count > 0)
             {
                 if (SolveSteps())
                     Thread.Sleep(500);
@@ -184,7 +206,7 @@ namespace HexCellsBot
 
                 UpdateModel();
                 Application.DoEvents();
-                
+
             }
         }
 
@@ -209,11 +231,11 @@ namespace HexCellsBot
 
             //SolveStep(1);
 
-            if (lbSolver.Items.Count > 0)
+            if (lvSteps.Items.Count > 0)
             {
-                var step = lbSolver.Items[0] as SolveStep;
+                var step = lvSteps.Items[0].Tag as SolveStep;
                 SolveStep(step);
-                lbSolver.Items.RemoveAt(0);
+                lvSteps.Items.RemoveAt(0);
             }
         }
     }

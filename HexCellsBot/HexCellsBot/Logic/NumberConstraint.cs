@@ -18,8 +18,9 @@ namespace HexCellsBot.Logic
 
     public class NumberConstraint
     {
-        private static int nextID = 0;
-        public readonly int ID = ++nextID;
+        public static int NextID = 0;
+        public int Generation;
+        public readonly int ID = ++NextID;
 
         public readonly ConstraintType Type;
         public readonly int Count;
@@ -134,6 +135,62 @@ namespace HexCellsBot.Logic
             foreach (var c in cells)
                 if (c != null)
                     Cells.Add(c);
+
+            if (HasGreaterOrEqualSemantics && Cells.Count(c => c.State != CellState.Black) < Count)
+                throw new Exception("Self-Inconsistent constraint");
+        }
+
+        public string ConstraintString
+        {
+            get
+            {
+                var s = "";
+                switch (Type)
+                {
+                    case ConstraintType.Equal:
+                        s += "Exactly " + Count;
+                        break;
+                    case ConstraintType.Connected:
+                        s += Count + " connected";
+                        break;
+                    case ConstraintType.NonConnected:
+                        s += Count + " non-connected";
+                        break;
+                    case ConstraintType.Minimum:
+                        s += "At least " + Count;
+                        break;
+                    case ConstraintType.Maximum:
+                        s += "At most " + Count;
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+                s += " Cell" + (Count > 1 ? "s" : "");
+                return s;
+            }
+        }
+
+        public string CellString
+        {
+            get
+            {
+                var s = "";
+                if (Cells.Count > 6)
+                    s += "... " + Cells.Count + " cells ...";
+                else
+                    s += Cells.Select(c => $"#{c.Nr} ({c.State})").Aggregate((s1, s2) => s1 + ", " + s2);
+                return s;
+            }
+        }
+
+        public string CellCompleteString
+        {
+            get
+            {
+                var s = "";
+                s += Cells.Select(c => $"#{c.Nr} ({c.State})").Aggregate((s1, s2) => s1 + ", " + s2);
+                return s;
+            }
         }
 
         public override string ToString()
@@ -141,14 +198,8 @@ namespace HexCellsBot.Logic
             var s = "#" + ID + ":";
             if (!string.IsNullOrEmpty(ExtraInfo))
                 s += " " + ExtraInfo + ",";
-            s += " Exactly " + Count;
-            if (Type != ConstraintType.Equal)
-                s += " " + Type;
-            s += " Cells of {";
-            if (Cells.Count > 6)
-                s += "... " + Cells.Count + " cells ...";
-            else
-                s += Cells.Select(c => c.ToString()).Aggregate((s1, s2) => s1 + ", " + s2);
+            s += " " + ConstraintString + " of {";
+            s += CellString;
             s += "}";
             return s;
         }
@@ -201,7 +252,7 @@ namespace HexCellsBot.Logic
         }
 
         // Checks if cut between nc and this has meaningful rule
-        public NumberConstraint ProbeCutWith(NumberConstraint nc)
+        public IEnumerable<NumberConstraint> ProbeCutWith(NumberConstraint nc)
         {
             var nc1only = Cells.Where(c => !nc.Cells.Contains(c)).ToArray();
             var nc2only = nc.Cells.Where(c => !Cells.Contains(c)).ToArray();
@@ -214,7 +265,10 @@ namespace HexCellsBot.Logic
                     if (nc.Count - nc2only.Length > Count)
                         throw new InvalidOperationException("Hm, something is fishey");
 
-                    return new NumberConstraint(0, nc1only, ConstraintType.Equal, null) { ExtraInfo = $"{IDString} and {nc.IDString} force these cells to be empty" };
+                    yield return new NumberConstraint(0, nc1only, ConstraintType.Equal, null)
+                    {
+                        ExtraInfo = $"{IDString} and {nc.IDString} force these cells to be empty"
+                    };
                 }
 
             // blues from this leak into rhs
@@ -224,10 +278,21 @@ namespace HexCellsBot.Logic
                     if (nc.Count < Count - nc1only.Length)
                         throw new InvalidOperationException("Hm, something is fishey");
 
-                    return new NumberConstraint(nc1only.Length, nc1only, ConstraintType.Equal, null) { ExtraInfo = $"{IDString} and {nc.IDString} force these cells to be all-blue" };
+                    yield return new NumberConstraint(nc1only.Length, nc1only, ConstraintType.Equal, null)
+                    {
+                        ExtraInfo = $"{IDString} and {nc.IDString} force these cells to be all-blue"
+                    };
                 }
 
-            return null;
+            // guaranteed min nr of cells bleeding into this
+            if (nc.HasGreaterOrEqualSemantics)
+                if (nc.Count > nc2only.Length)
+                {
+                    yield return new NumberConstraint(nc.Count - nc2only.Length, bothCells, ConstraintType.Minimum, null)
+                    {
+                        ExtraInfo = $"{bothCells.Length} cells of {IDString} overlap {nc.IDString}, with at least {nc.Count - nc2only.Length} blue ones in the overlap"
+                    };
+                }
         }
 
         public IEnumerable<NumberConstraint> DerivativeRules

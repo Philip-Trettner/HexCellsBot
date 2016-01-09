@@ -25,6 +25,18 @@ namespace HexCellsBot.Logic
         TopLeft
     }
 
+    public class CellStub
+    {
+        public CellState State;
+        public string Text;
+
+        public CellStub(CellState state, string txt)
+        {
+            State = state;
+            Text = txt;
+        }
+    }
+
     public class Cell
     {
         public int Nr;
@@ -37,6 +49,7 @@ namespace HexCellsBot.Logic
         public Model Model;
 
         public bool Solved = false;
+        public CellState SolvedState;
 
         public string InnerText;
 
@@ -79,7 +92,7 @@ namespace HexCellsBot.Logic
                         case CellState.Black:
                             if (cnt > 6)
                                 throw new ArgumentOutOfRangeException("cnt");
-                            return new NumberConstraint(cnt, Neighbors, type, ConnectionModel.FromCell(this)) {ExtraInfo = "From " + this};
+                            return new NumberConstraint(cnt, Neighbors, type, ConnectionModel.FromCell(this)) { ExtraInfo = "From " + this };
                         default:
                             throw new NotImplementedException();
                     }
@@ -89,7 +102,12 @@ namespace HexCellsBot.Logic
             }
         }
 
-        public bool MaySolve => State == CellState.Yellow && !Solved;
+        public bool MaySolve(CellState newState)
+        {
+            if (Solved && newState != SolvedState)
+                throw new InvalidOperationException("Inconsistent solving");
+            return State == CellState.Yellow && !Solved;
+        }
 
         public override string ToString()
             => $"Cell #{Nr} ({Center}, {State}{(string.IsNullOrEmpty(InnerText) ? "" : ", " + InnerText)})";

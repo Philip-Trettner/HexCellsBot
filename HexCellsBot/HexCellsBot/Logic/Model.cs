@@ -28,15 +28,87 @@ namespace HexCellsBot.Logic
 
         public readonly List<Cell> Cells = new List<Cell>();
 
-        private static readonly TesseractEngine Tengine = new TesseractEngine("./tessdata", "eng", EngineMode.Default);
+        private static TesseractEngine Tengine;
 
         public List<NumberConstraint> NumberConstraints = new List<NumberConstraint>();
         public List<ColumnConstraint> ColumnConstraints = new List<ColumnConstraint>();
 
+        private List<KeyValuePair<NumberConstraint, NumberConstraint>> UncheckedRulePairs = new List<KeyValuePair<NumberConstraint, NumberConstraint>>();
+        private List<NumberConstraint> NewRules = new List<NumberConstraint>();
+
         public readonly List<SolveStep> Steps = new List<SolveStep>();
 
-        public int RemainingCount;
+        public int RemainingCount = -1;
         private static readonly Rectangle RemainingRectangle = new Rectangle(1741, 78, 155, 45);
+
+        private Model()
+        {
+
+        }
+
+        public void InternallyApplySteps()
+        {
+            foreach (var s in Steps)
+                s.Cell.State = s.NewState;
+        }
+
+        // Only works with FromGrid ctor
+        // CAREFUL: Y X
+        public Cell GridCellAt(int y, int x)
+        {
+            const int rad = 100;
+            var pos = (ivec2)(new dvec2(x * rad * Math.Sqrt(3), y * rad * 2 + x * rad) * 1.3);
+            return Cells.First(c => c.Center == pos);
+        }
+
+        // rhombus style
+        public static Model FromGrid(CellStub[,] grid, params ColumnConstraintTestStub[] columns)
+        {
+            const int rad = 100;
+            var w = grid.GetLength(0);
+            var h = grid.GetLength(1);
+
+            var m = new Model();
+
+            var cells = new Cell[w, h];
+            for (var x = 0; x < w; ++x)
+                for (var y = 0; y < h; ++y)
+                {
+                    var cs = grid[x, y];
+                    if (cs == null)
+                        continue;
+
+                    var c = new Cell
+                    {
+                        State = cs.State,
+                        Center = (ivec2)(new dvec2(x * rad * Math.Sqrt(3), y * rad * 2 + x * rad) * 1.3),
+                        InnerText = cs.Text,
+                        Radius = rad,
+                        Model = m
+                    };
+                    cells[x, y] = c;
+                    m.Cells.Add(c);
+                }
+
+            foreach (var cc in columns)
+                m.ColumnConstraints.Add(new ColumnConstraint(cells[cc.X, cc.Y], cc.Angle, cc.Text, m, ivec2.Zero));
+
+            m.AssignCellNrs();
+            m.ConnectNeigbors();
+            m.CollectRules();
+            m.Solve();
+
+            return m;
+        }
+
+        public void Resolve()
+        {
+            NumberConstraints.Clear();
+            Steps.Clear();
+
+            CollectRules();
+            Solve();
+        }
 
         public static Model Analyze(Bitmap bmp)
         {
@@ -49,9 +121,13 @@ namespace HexCellsBot.Logic
             for (var i = 0; i < w * h; ++i)
                 colors[i] &= RgbMask;
 
-            Tengine.SetVariable("classify_enable_learning", false);
-            Tengine.SetVariable("classify_enable_adaptive_matcher", false);
-            Tengine.SetVariable("tessedit_char_whitelist", "1234567890-{}?_");
+            if (Tengine == null)
+            {
+                Tengine = new TesseractEngine("./tessdata", "eng", EngineMode.Default);
+                Tengine.SetVariable("classify_enable_learning", false);
+                Tengine.SetVariable("classify_enable_adaptive_matcher", false);
+                Tengine.SetVariable("tessedit_char_whitelist", "1234567890-{}?_");
+            }
 
             // remaining rect
             var bx = 0;
@@ -77,8 +153,8 @@ namespace HexCellsBot.Logic
             m.CheckCells(CellState.Yellow, ColorYellow, ColorDeepYellow, w, h, colors);
             m.CheckCells(CellState.Blue, ColorBlue, ColorDeepBlue, w, h, colors);
             m.CheckCells(CellState.Black, ColorBlack, ColorDeepBlack, w, h, colors);
-            for (var i = 0; i < m.Cells.Count; ++i)
-                m.Cells[i].Nr = i;
+
+            m.AssignCellNrs();
 
             m.ConnectNeigbors();
 
@@ -104,6 +180,12 @@ namespace HexCellsBot.Logic
             return m;
         }
 
+        private void AssignCellNrs()
+        {
+            for (var i = 0; i < Cells.Count; ++i)
+                Cells[i].Nr = i;
+        }
+
         private void ReadRemaining(Bitmap bmp, int bx, int by, int bh)
         {
             var remainS = OCROf(bmp, bx - 150, by + bh - 45, 150, 45, 10000);
@@ -115,17 +197,17 @@ namespace HexCellsBot.Logic
             // low hanging stuff
             foreach (var rule in NumberConstraints)
             {
-                // Count == number of yellow + blue => all blue
-                if (rule.Count == rule.Cells.Count(c => c.State != CellState.Black))
+                // Count >= number of yellow + blue => all blue
+                if (rule.HasGreaterOrEqualSemantics && rule.Count >= rule.Cells.Count(c => c.State != CellState.Black))
                 {
-                    foreach (var c in rule.Cells.Where(c => c.MaySolve))
+                    foreach (var c in rule.Cells.Where(c => c.MaySolve(CellState.Blue)))
                         Steps.Add(new SolveStep(c, CellState.Blue, $"{rule.IDString} has exact number match"));
                 }
 
                 // Count == number of blue => all black
-                if (rule.Count == rule.Cells.Count(c => c.State == CellState.Blue))
+                if (rule.HasLesserOrEqualSemantics && rule.Count <= rule.Cells.Count(c => c.State == CellState.Blue))
                 {
-                    foreach (var c in rule.Cells.Where(c => c.MaySolve))
+                    foreach (var c in rule.Cells.Where(c => c.MaySolve(CellState.Black)))
                         Steps.Add(new SolveStep(c, CellState.Black, $"{rule.IDString} is already full, everything else is black"));
                 }
 
@@ -154,64 +236,91 @@ namespace HexCellsBot.Logic
             if (NumberConstraints.Any(nc.SameAs))
                 return false;
 
+            foreach (var nc2 in NumberConstraints)
+            {
+                UncheckedRulePairs.Add(new KeyValuePair<NumberConstraint, NumberConstraint>(nc, nc2));
+                UncheckedRulePairs.Add(new KeyValuePair<NumberConstraint, NumberConstraint>(nc2, nc));
+            }
+
             NumberConstraints.Add(nc);
+            NewRules.Add(nc);
+            nc.Generation = Generation;
             return true;
         }
 
         private bool RuleInference()
         {
+            ++Generation;
             var changed = false;
 
-            // add pure rules
-            foreach (var nc in NumberConstraints.ToArray())
+            // check new rules
+            var newRules = NewRules.ToArray();
+            NewRules.Clear();
+            Console.WriteLine(newRules.Length + " rules to check");
+            foreach (var nc in newRules)
+            {
+                // add pure rules
                 changed |= AddRuleChecked(nc.PureRule);
-            // add positive rules
-            foreach (var nc in NumberConstraints.ToArray())
+                // add positive rules
                 changed |= AddRuleChecked(nc.PositiveRule);
 
-            // special derivatives
-            foreach (var nc in NumberConstraints.ToArray())
+                // special derivatives
                 foreach (var newc in nc.DerivativeRules)
                     changed |= AddRuleChecked(newc);
+            }
 
-            foreach (var nc1 in NumberConstraints.ToArray())
-                foreach (var nc2 in NumberConstraints.ToArray())
-                {
-                    if (nc1 == nc2)
-                        continue;
+            // check pairs
+            var pairs = UncheckedRulePairs.ToArray();
+            UncheckedRulePairs.Clear();
+            Console.WriteLine(pairs.Length + " rule pairs to check");
+            foreach (var kvp in pairs)
+            {
+                var nc1 = kvp.Key;
+                var nc2 = kvp.Value;
 
-                    // TODO: check with special types
+                if (nc1 == nc2)
+                    continue;
 
-                    // check if nc1 is subset of nc2
-                    if (nc1.HasEqualSemantics && nc2.Type == ConstraintType.Equal)
-                        if (nc1.IsStrictSubsetOf(nc2))
-                            changed |= AddRuleChecked(nc2.Without(nc1));
+                // TODO: check with special types
 
-                    // check cutting stuff
-                    // WORKS WITH CONN AND NONCONN
-                    if (nc1.HasCutWith(nc2))
-                        changed |= AddRuleChecked(nc1.ProbeCutWith(nc2));
-                }
+                // check if nc1 is subset of nc2
+                if (nc1.HasEqualSemantics && nc2.Type == ConstraintType.Equal)
+                    if (nc1.IsStrictSubsetOf(nc2))
+                        changed |= AddRuleChecked(nc2.Without(nc1));
 
-            Console.WriteLine(NumberConstraints.Count + " Rules after inference");
+                // check cutting stuff
+                // WORKS WITH CONN AND NONCONN
+                if (nc1.HasCutWith(nc2))
+                    foreach (var newc in nc1.ProbeCutWith(nc2))
+                        changed |= AddRuleChecked(newc);
+            }
+
+            Console.WriteLine(NumberConstraints.Count + " total rules after inference");
+            Console.WriteLine();
             return changed;
         }
 
+        private int Generation = -1;
+
         private void CollectRules()
         {
+            Generation = 0;
+            NumberConstraint.NextID = 0;
+
             // get initial rules
             foreach (var cell in Cells)
             {
                 var nc = cell.Constraint;
                 if (nc != null)
-                    NumberConstraints.Add(nc);
+                    AddRuleChecked(nc);
             }
             foreach (var cc in ColumnConstraints)
-                NumberConstraints.Add(cc.Constraint);
+                AddRuleChecked(cc.Constraint);
 
             // Remaining cells
-            if (RemainingCount < 6)
-                NumberConstraints.Add(new NumberConstraint(RemainingCount, Cells.Where(c => c.State == CellState.Yellow), ConstraintType.Equal, null));
+            // Only if low nr, otherwise rules explosion
+            if (RemainingCount >= 0 && RemainingCount <= 6)
+                AddRuleChecked(new NumberConstraint(RemainingCount, Cells.Where(c => c.State == CellState.Yellow), ConstraintType.Equal, null));
 
             // remove irrelevant ones
             NumberConstraints.RemoveAll(nc => !nc.IsRelevant);
@@ -300,8 +409,8 @@ namespace HexCellsBot.Logic
                         var bc = 0;
                         const int dw = 10;
                         const int dh = 15;
-                        for (int dy = -dh; dy <= dh; ++dy)
-                            for (int dx = -dw; dx <= dw; ++dx)
+                        for (var dy = -dh; dy <= dh; ++dy)
+                            for (var dx = -dw; dx <= dw; ++dx)
                                 if (bmp.GetPixel(cp.x + dx, cp.y + dy).GetBrightness() < .5)
                                     ++bc;
 
@@ -350,7 +459,7 @@ namespace HexCellsBot.Logic
                 for (var y = 0; y < bh; ++y)
                     for (var x = 0; x < bw; ++x)
                     {
-                        float b = subbmp.GetPixel(x, y).GetBrightness();
+                        var b = subbmp.GetPixel(x, y).GetBrightness();
                         var v = (int)((b - .3) / (.6 - .3) * 255);
                         if (v < 0) v = 0;
                         if (v > 255) v = 255;
@@ -549,8 +658,8 @@ namespace HexCellsBot.Logic
                 foreach (var cc in ColumnConstraints)
                 {
                     var dir = vec2.FromAngle((-vec2.UnitY).Angle + cc.AngleInDeg / 180.0 * Math.PI) * 30;
-                    var s = (ivec2) (cc.TextCenter + dir);
-                    var e = (ivec2) (cc.TextCenter - dir);
+                    var s = (ivec2)(cc.TextCenter + dir);
+                    var e = (ivec2)(cc.TextCenter - dir);
                     g.DrawLine(Pens.Blue, s.x, s.y, e.x, e.y);
 
                     {
